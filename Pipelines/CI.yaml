@@ -1,0 +1,135 @@
+name: master-CI
+
+trigger:
+- master
+
+pool:
+  vmImage: ubuntu-20.04
+
+variables:
+  azureServiceConnection: <Azure Service Connection name>
+  functionAppName: <Function App name>
+  functionStorageAccount: <Function App Storage Account name>
+  functionResourceGroupName: <Resource Group name>
+  functionASP: <Premium App Service Plan name>
+  imageName: <Docker hub repo name>/<image name>:<tag>
+  dockerfilePath: $(Build.SourcesDirectory)/Dockerfile
+  dockerRegistryServerURL: https://index.docker.io/v1
+  dockerServiceConnection: <Docker Hub Service Connection name>
+  environmentName: <Target Azure Pipelines environment name>
+
+  # Secret variables
+
+  db_server: $(sec_db_server)
+  db_name: $(sec_db_name)
+  db_username: $(sec_db_username)
+  db_password: $(sec_db_password)
+  data_conn_string: $(sec_data_conn_string)
+
+stages:
+- stage: Build
+  displayName: Build
+
+  jobs:
+  - job: DockerImage
+    displayName: Build and push Docker image
+
+    steps:
+    - task: Docker@1
+      displayName: 'Build the Docker image'
+      inputs:
+        containerregistrytype: 'Container Registry'
+        dockerRegistryEndpoint: '$(dockerServiceConnection)'
+        command: 'Build an image'
+        dockerFile: '$(dockerfilePath)'
+        imageName: '$(imageName)'
+        includeLatestTag: false
+        useDefaultContext: false
+        buildContext: '.'
+    - task: Docker@1
+      displayName: 'Push the Docker image to Docker Hub'
+      inputs:
+        containerregistrytype: 'Container Registry'
+        dockerRegistryEndpoint: '$(dockerServiceConnection)'
+        command: 'Push an image'
+        imageName: '$(ImageName)'
+      condition: succeeded()
+
+- stage: Deployment
+  displayName: Deployment stage
+  dependsOn: Build
+  condition: succeeded()
+
+  jobs:
+  - deployment: Deploy
+    displayName: Deploy
+    environment: '$(environmentName)'
+
+    strategy:
+      runOnce:
+        deploy:
+
+          steps:
+          - task: AzureCLI@2
+            displayName: Create Function App if it doesn't exist 
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                if az functionapp list | grep -q '$(functionAppName)'; then
+                  echo "Function exists"
+                else
+                  az functionapp create --name $(functionAppName) \
+                  --storage-account $(functionStorageAccount) \
+                  --resource-group $(functionResourceGroupName) \
+                  --plan $(functionASP) \
+                  --deployment-container-image-name $(imageName)
+                  echo "Function created"
+                fi
+          - task: AzureFunctionAppContainer@1
+            displayName: 'Deploy '
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              appName: '$(functionAppName)'
+              imageName: '$(imageName)'
+              deployToSlotOrASE: true
+              resourceGroupName: '$(functionResourceGroupName)'
+          - task: AzureAppServiceSettings@1
+            displayName: Azure App Service Settings
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              appName: '$(functionAppName)'
+              appSettings: |
+                [
+                  {
+                    "name": "DB_SERVER",
+                    "value": "$(db_server)",
+                    "slotSetting": false
+                  },
+                  {
+                    "name": "DB_NAME",
+                    "value": "$(db_name)",
+                    "slotSetting": true
+                  },
+                  {
+                    "name": "DB_USERNAME",
+                    "value": "$(db_username)",
+                    "slotSetting": false
+                  },
+                  {
+                    "name": "DB_PASSWORD",
+                    "value": "$(db_password)",
+                    "slotSetting": false
+                  },
+                  {
+                    "name": "CONN_STRING",
+                    "value": "$(data_conn_string)",
+                    "slotSetting": true
+                  },
+                  {
+                    "name": "TZ",
+                    "value": "Europe/Amsterdam",
+                    "slotSetting": false
+                  }
+                ]

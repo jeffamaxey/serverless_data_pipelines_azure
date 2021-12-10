@@ -1,0 +1,7 @@
+# Do not include azure-functions-worker as it may conflict with the Azure Functions platform
+
+azure-functions
+azure-storage-blob==12.9.0
+numpy==1.21.3
+pandas==1.1.5
+pyodbc==4.0.32
