@@ -1,7 +1,7 @@
-name: master-CI
+name: main-CI
 
 trigger:
-- master
+- main
 
 pool:
   vmImage: ubuntu-20.04
