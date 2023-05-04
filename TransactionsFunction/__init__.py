@@ -37,11 +37,11 @@ def get_data(conn_str: str, container_name: str) -> pd.DataFrame:
     dfs = []
 
     for blob in blob_list:
-            
+
         blob_client = BlobClient.from_connection_string(conn_str=conn_str,
                                                         container_name=container_name, 
                                                         blob_name=blob.name)
-        
+
         with open(blob.name, "wb") as my_blob:
                 blob_data = blob_client.download_blob()
                 blob_data.readinto(my_blob)
@@ -49,10 +49,8 @@ def get_data(conn_str: str, container_name: str) -> pd.DataFrame:
         raw_data = pd.read_csv(blob.name)
 
         dfs.append(raw_data)
-        
-    data = pd.concat(dfs)
 
-    return data
+    return pd.concat(dfs)
 
 
 def write_to_sql(cursor: pyodbc.Cursor, data: pd.DataFrame, table_name: str) -> None:
